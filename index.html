@@ -315,7 +315,10 @@ button:hover{background:#2a2a2a}
       <div class="fgr"><span class="fl">Descrição</span><input type="text" id="ex-desc" placeholder="ex: Jantar do dia 20"/></div>
       <div class="fgr"><span class="fl">Valor (R$, opcional)</span><input type="number" id="ex-val" placeholder="0,00" step="0.01" min="0"/></div>
     </div>
-    <div class="fac"><button onclick="togglePanel('add-extra')">Cancelar</button><button onclick="addExtra()">Salvar</button></div>
+    <div class="fg">
+      <div class="fgr"><span class="fl">Data de vencimento (opcional)</span><input type="date" id="ex-due"/></div>
+      <div style="display:flex;align-items:flex-end"><div class="fac" style="width:100%"><button onclick="togglePanel('add-extra')">Cancelar</button><button onclick="addExtra()">Salvar</button></div></div>
+    </div>
   </div>
   <div class="ca"><div id="extras-list"></div></div>
 </div>
@@ -658,6 +661,8 @@ function setShopView(v){shopView=v;
   document.getElementById('vt-list').classList.toggle('ac',v==='list');
   document.getElementById('vt-chart').classList.toggle('ac',v==='chart');
   if(v==='chart')renderShopCharts();}
+let editingShopId=null;
+
 function renderShop(){
   const total=shopItems.reduce((a,i)=>a+(+i.value||0),0);
   const filled=shopItems.filter(i=>+i.value>0).length,done=shopItems.filter(i=>i.checked===true||i.checked==='true').length;
@@ -670,16 +675,53 @@ function renderShop(){
   document.getElementById('shop-list-view').innerHTML=cats.map(cat=>{
     const items=shopItems.filter(i=>i.cat===cat),ct=items.reduce((a,i)=>a+(+i.value||0),0);
     return`<div class="slc"><div class="sch"><span>${cat}</span>${ct>0?`<span>${brl(ct)}</span>`:''}</div>
-      ${items.map(item=>{const isDone=item.checked===true||item.checked==='true',isFixed=item.fixed===true||item.fixed==='true';
-        return`<div class="sir"><input type="checkbox" class="six" ${isDone?'checked':''} onchange="toggleShopItem(${item.id},this)"/>
+      ${items.map(item=>{
+        const isDone=item.checked===true||item.checked==='true',isFixed=item.fixed===true||item.fixed==='true';
+        const isEditing=editingShopId===item.id;
+        if(isEditing){
+          return`<div class="sir" id="siedit-${item.id}" style="flex-direction:column;align-items:stretch;gap:8px;padding:10px 0">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="fgr"><span class="fl">Nome</span><input type="text" id="se-name-${item.id}" value="${item.name}" style="font-size:13px"/></div>
+              <div class="fgr"><span class="fl">Qtd / obs</span><input type="text" id="se-qty-${item.id}" value="${item.qty||''}" placeholder="ex: 5kg, 2 un" style="font-size:13px"/></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+              <div class="fgr"><span class="fl">Valor previsto (R$)</span><input type="number" id="se-val-${item.id}" value="${item.value||''}" step="0.01" min="0" style="font-size:13px"/></div>
+              <div class="fgr"><span class="fl">Categoria</span>
+                <select id="se-cat-${item.id}">
+                  ${['Limpeza','Padaria','Proteínas','Hortifruti','Bebidas','Laticínios','Outros'].map(c=>`<option${c===item.cat?' selected':''}>${c}</option>`).join('')}
+                </select>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;justify-content:flex-end">
+              <button onclick="cancelEditShop()" style="font-size:12px;padding:4px 12px">Cancelar</button>
+              <button onclick="saveEditShop(${item.id})" style="font-size:12px;padding:4px 12px;background:#1D9E7520;color:#1D9E75;border-color:#1D9E7440">Salvar</button>
+            </div>
+          </div>`;
+        }
+        return`<div class="sir">
+          <input type="checkbox" class="six" ${isDone?'checked':''} onchange="toggleShopItem(${item.id},this)"/>
           <span class="sin${isDone?' dn':''}" id="si-${item.id}">${item.name}</span>
           ${item.qty?`<span class="siq">${item.qty}</span>`:''}
           ${isFixed?'<span class="sft">fixo</span>':''}
           <div class="siv"><input type="number" placeholder="0,00" step="0.01" min="0" value="${item.value||''}"
             onchange="setItemVal(${item.id},this.value)" oninput="setItemVal(${item.id},this.value)"/></div>
-          ${!isFixed?`<button class="db" onclick="delShopItem(${item.id})">✕</button>`:'<span style="width:20px"></span>'}
-        </div>`;}).join('')}</div>`;}).join('');
+          <button class="eb" onclick="openEditShop(${item.id})" title="Editar">✎</button>
+          <button class="db" onclick="delShopItem(${item.id})">✕</button>
+        </div>`;
+      }).join('')}</div>`;}).join('');
   if(shopView==='chart')renderShopCharts();
+}
+
+function openEditShop(id){editingShopId=id;renderShop()}
+function cancelEditShop(){editingShopId=null;renderShop()}
+async function saveEditShop(id){
+  const item=shopItems.find(i=>i.id===id);if(!item)return;
+  item.name=document.getElementById(`se-name-${id}`).value.trim()||item.name;
+  item.qty=document.getElementById(`se-qty-${id}`).value.trim();
+  item.value=parseFloat(document.getElementById(`se-val-${id}`).value)||0;
+  item.cat=document.getElementById(`se-cat-${id}`).value;
+  editingShopId=null;renderShop();setSS('sv','Salvando...');
+  try{await apiPost('updateShopItem',{id,name:item.name,qty:item.qty,value:item.value,cat:item.cat});setSS('ok','Salvo')}catch{setSS('er','Erro')}
 }
 function renderShopCharts(){
   const cats=[...new Set(shopItems.map(i=>i.cat))].sort();
@@ -724,20 +766,54 @@ async function addShopItem(){
 async function addExtra(){
   const from=document.getElementById('ex-from').value,to=document.getElementById('ex-to').value;
   const desc=document.getElementById('ex-desc').value.trim(),val=parseFloat(document.getElementById('ex-val').value)||0;
+  const dueDate=document.getElementById('ex-due').value;
   if(!desc||from===to)return;
-  const ex={id:eid++,from,to,desc,value:val,date:new Date().toLocaleDateString('pt-BR')};
-  extras.unshift(ex);document.getElementById('ex-desc').value='';document.getElementById('ex-val').value='';
+  const ex={id:eid++,from,to,desc,value:val,date:new Date().toLocaleDateString('pt-BR'),dueDate,status:'pendente'};
+  extras.unshift(ex);
+  document.getElementById('ex-desc').value='';document.getElementById('ex-val').value='';document.getElementById('ex-due').value='';
   togglePanel('add-extra');renderExtras();setSS('sv','Salvando...');
-  try{await apiPost('addNota',ex);setSS('ok','Salvo')}catch{setSS('er','Erro')}}
+  try{await apiPost('addNota',ex);setSS('ok','Salvo')}catch{setSS('er','Erro')}
+}
 async function delExtra(id){extras=extras.filter(n=>n.id!==id);renderExtras();setSS('sv','Salvando...');
   try{await apiPost('deleteNota',{id});setSS('ok','Salvo')}catch{setSS('er','Erro')}}
+async function toggleExtraStatus(id){
+  const ex=extras.find(n=>n.id===id);if(!ex)return;
+  ex.status=ex.status==='pago'?'pendente':'pago';
+  renderExtras();setSS('sv','Salvando...');
+  try{await apiPost('deleteNota',{id});await apiPost('addNota',ex);setSS('ok','Salvo')}catch{setSS('er','Erro')}
+}
 function renderExtras(){
   const l=document.getElementById('extras-list');
   if(!extras.length){l.innerHTML='<div class="ems">Nenhum registro ainda.</div>';return}
-  l.innerHTML=extras.map(n=>`<div class="nr"><div class="nb">
-    <div class="nt">${n.desc}</div>
-    <div class="nm"><span style="color:${PC[n.from]};font-weight:500">${n.from}</span> → <span style="color:${PC[n.to]};font-weight:500">${n.to}</span><span style="margin-left:8px">${n.date}</span></div>
-  </div>${+n.value>0?`<span class="nv">${brl(n.value)}</span>`:''}<button class="db" onclick="delExtra(${n.id})">✕</button></div>`).join('');
+  const pending=extras.filter(n=>(n.status||'pendente')==='pendente');
+  const paid=extras.filter(n=>n.status==='pago');
+  function renderItem(n){
+    const isPago=n.status==='pago';
+    const dueFmt=n.dueDate?new Date(n.dueDate+'T00:00:00').toLocaleDateString('pt-BR'):'';
+    return`<div class="nr">
+      <div class="nb">
+        <div class="nt" style="${isPago?'text-decoration:line-through;color:#555':''}">${n.desc}</div>
+        <div class="nm">
+          <span style="color:${PC[n.from]};font-weight:500">${n.from}</span> → <span style="color:${PC[n.to]};font-weight:500">${n.to}</span>
+          <span style="margin-left:8px">registrado ${n.date}</span>
+          ${dueFmt?`<span style="margin-left:6px;color:#BA7517">· vence ${dueFmt}</span>`:''}
+        </div>
+      </div>
+      ${+n.value>0?`<span class="nv" style="${isPago?'color:#444;text-decoration:line-through':''}">${brl(n.value)}</span>`:''}
+      <button class="pp${isPago?'':' sp'}" style="font-size:11px;padding:3px 10px;white-space:nowrap" onclick="toggleExtraStatus(${n.id})">${isPago?'Pendente':'Pago'}</button>
+      <button class="db" onclick="delExtra(${n.id})">✕</button>
+    </div>`;
+  }
+  let html='';
+  if(pending.length){
+    html+=`<div style="font-size:11px;color:#BA7517;padding:8px 0 6px;border-bottom:1px solid #2a2a2a;margin-bottom:0;letter-spacing:.06em;text-transform:uppercase">Pendentes — ${pending.length}</div>`;
+    html+=pending.map(renderItem).join('');
+  }
+  if(paid.length){
+    html+=`<div style="font-size:11px;color:#444;padding:12px 0 6px;border-bottom:1px solid #222;letter-spacing:.06em;text-transform:uppercase">Pagos — ${paid.length}</div>`;
+    html+=paid.map(renderItem).join('');
+  }
+  l.innerHTML=html;
 }
 
 function renderAll(){renderFin();renderTasks();renderShop();renderExtras()}
