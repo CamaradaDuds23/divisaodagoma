@@ -380,7 +380,8 @@ async function loadAll(){
     const d=await apiGet('getAll');
     bills=(d.despesas||[]).map(b=>({...b,id:+b.id,value:+b.value,month:+b.month,year:+b.year,
       parcelaAtual:+b.parcelaAtual||0,totalParcelas:+b.totalParcelas||0,
-      customSplit:b.customSplit?JSON.parse(b.customSplit):null}));
+      customSplit:(()=>{try{return b.customSplit&&b.customSplit!==''?JSON.parse(b.customSplit):null}catch{return null}})(),
+      color:b.color||''}));
     if(bills.length)bid=Math.max(...bills.map(b=>b.id))+1;
     payments={};(d.pagamentos||[]).forEach(p=>{payments[`${p.person}-${p.month}-${p.year}`]={status:p.status}});
     const raw=d.listaCompras||[];
